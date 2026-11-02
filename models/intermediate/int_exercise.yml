@@ -1,0 +1,8 @@
+version: 2
+
+models:
+  - name: int_exercise
+    description: Fitbit exercise records with normalized duration and API field names.
+    columns:
+      - name: active_duration_seconds
+        description: Exercise duration converted from the API's trailing-s format to DOUBLE seconds.

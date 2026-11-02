@@ -1,0 +1,17 @@
+.env
+.user.yml
+token.json
+credentials.json
+__pycache__/
+.venv/
+.venv-py315-backup/
+*.py[cod]
+data/
+health.duckdb
+health.duckdb.wal
+target/
+dbt_packages/
+profiles.yml
+dbt_internal_packages/
+.vscode/
+logs/

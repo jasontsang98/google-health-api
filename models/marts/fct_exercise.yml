@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: fct_exercise
+    description: Cleaned exercise records with stable analytical column names.
+    columns:
+      - name: data_point_id
+        tests:
+          - not_null
+          - unique
+      - name: start_time
+        tests:
+          - not_null
+
+  - name: fct_badminton
+    description: Pivoted badminton metrics keyed by data-point ID. Join to fct_exercise for session fields.
+    columns:
+      - name: data_point_id
+        tests:
+          - not_null
+          - unique

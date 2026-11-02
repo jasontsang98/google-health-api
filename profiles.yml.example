@@ -1,0 +1,7 @@
+google_health:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: health.duckdb
+      threads: 4
