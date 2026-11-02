@@ -20,7 +20,7 @@ FACT_TABLES = ("fct_exercise", "fct_badminton")
 
 
 def resolve_output_dir(cli_value: str | None) -> Path:
-    value = cli_value or os.getenv("GDRIVE_OUTPUT_DIR") or os.getenv("OUTPUT_DIR", "output")
+    value = cli_value or os.getenv("GDRIVE_OUTPUT_DIR") or os.getenv("OUTPUT_DIR", "data/gold")
     if not value:
         raise RuntimeError(
             "Set GDRIVE_OUTPUT_DIR in .env or pass --output-dir with the local "

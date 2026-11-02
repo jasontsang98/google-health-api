@@ -1,0 +1,51 @@
+name: Google Health pipeline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1"
+      timezone: "Australia/Sydney"
+
+concurrency:
+  group: google-health-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+      GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+      UPLOAD_TO_DRIVE: "true"
+      DATA_ROOT: data
+      OUTPUT_DIR: data/gold
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Create dbt profile
+        run: cp profiles.yml.example profiles.yml
+
+      - name: Ingest Google Health data
+        run: python scripts/ingest_health.py
+
+      - name: Build dbt models and tests
+        run: dbt build --profiles-dir .
+
+      - name: Upload fact tables to Google Drive
+        run: python scripts/export_facts.py --upload-to-drive
