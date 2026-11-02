@@ -18,6 +18,7 @@ import truststore
 truststore.inject_into_ssl()
 
 from dotenv import load_dotenv
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import AuthorizedSession, Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
@@ -29,6 +30,24 @@ HEALTH_SCOPE = "https://www.googleapis.com/auth/googlehealth.activity_and_fitnes
 DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 SCOPES = [HEALTH_SCOPE, DRIVE_SCOPE]
 TOKEN_PATH = ROOT / "token.json"
+
+
+def refresh_credentials(credentials: Credentials) -> None:
+    """Refresh credentials with an actionable error for unattended runs."""
+
+    try:
+        credentials.refresh(Request())
+    except RefreshError as error:
+        if os.getenv("GOOGLE_REFRESH_TOKEN"):
+            raise RuntimeError(
+                "Google refresh token is expired, revoked, or invalid. "
+                "Generate a new OAuth token locally and update the GitHub "
+                "GOOGLE_REFRESH_TOKEN secret before rerunning the workflow."
+            ) from error
+        raise RuntimeError(
+            "Local Google credentials could not be refreshed. "
+            "Run the script again interactively to authorize a new token."
+        ) from error
 
 
 def required_env(name: str, *aliases: str) -> str:
@@ -56,7 +75,7 @@ def authenticate(requested_scopes: Sequence[str] | None = None) -> Credentials:
             client_secret=required_env("GOOGLE_CLIENT_SECRET"),
             scopes=list(requested_scopes),
         )
-        credentials.refresh(Request())
+        refresh_credentials(credentials)
         return credentials
     elif TOKEN_PATH.exists():
         token_data = json.loads(TOKEN_PATH.read_text(encoding="utf-8"))
@@ -74,7 +93,7 @@ def authenticate(requested_scopes: Sequence[str] | None = None) -> Credentials:
         else set(credentials.scopes or []) if credentials else set()
     )
     if credentials and credentials.refresh_token and set(requested_scopes).issubset(granted_scopes):
-        credentials.refresh(Request())
+        refresh_credentials(credentials)
         return credentials
     if credentials and credentials.valid and set(requested_scopes).issubset(granted_scopes):
         return credentials
@@ -114,7 +133,7 @@ def authenticate(requested_scopes: Sequence[str] | None = None) -> Credentials:
         client_secret=credentials.client_secret,
         scopes=list(requested_scopes),
     )
-    scoped_credentials.refresh(Request())
+    refresh_credentials(scoped_credentials)
     return scoped_credentials
 
 
