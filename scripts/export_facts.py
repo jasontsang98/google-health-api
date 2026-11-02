@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-from ingest_health import authenticate
+from ingest_health import DRIVE_SCOPE, authenticate
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,7 +48,12 @@ def export_fact_tables(database: Path, output_dir: Path) -> list[Path]:
 
 
 def upload_to_drive(paths: list[Path], folder_id: str) -> None:
-    service = build("drive", "v3", credentials=authenticate(), cache_discovery=False)
+    service = build(
+        "drive",
+        "v3",
+        credentials=authenticate([DRIVE_SCOPE]),
+        cache_discovery=False,
+    )
     for path in paths:
         escaped_name = path.name.replace("'", "\\'")
         query = (

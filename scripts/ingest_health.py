@@ -8,7 +8,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 from urllib.parse import urlparse
 
 import pyarrow as pa
@@ -39,8 +39,10 @@ def required_env(name: str, *aliases: str) -> str:
     raise RuntimeError(f"Missing required environment variable: {', '.join((name, *aliases))}")
 
 
-def authenticate() -> Credentials:
-    """Load, refresh, or create local OAuth credentials for the Health API."""
+def authenticate(requested_scopes: Sequence[str] | None = None) -> Credentials:
+    """Load or create credentials for one Google API scope set."""
+
+    requested_scopes = tuple(requested_scopes or SCOPES)
 
     credentials: Credentials | None = None
     refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
@@ -52,7 +54,7 @@ def authenticate() -> Credentials:
             token_uri=os.getenv("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
             client_id=required_env("GOOGLE_CLIENT_ID"),
             client_secret=required_env("GOOGLE_CLIENT_SECRET"),
-            scopes=SCOPES,
+            scopes=list(requested_scopes),
         )
         credentials.refresh(Request())
         return credentials
@@ -62,17 +64,20 @@ def authenticate() -> Credentials:
         if isinstance(raw_scopes, str):
             raw_scopes = raw_scopes.split()
         stored_scopes = set(raw_scopes)
-        credentials = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
+        credentials = Credentials.from_authorized_user_file(
+            str(TOKEN_PATH), list(requested_scopes)
+        )
 
     granted_scopes = (
         stored_scopes
         if stored_scopes
         else set(credentials.scopes or []) if credentials else set()
     )
-    if credentials and credentials.valid and set(SCOPES).issubset(granted_scopes):
-        return credentials
-    if credentials and credentials.expired and credentials.refresh_token and set(SCOPES).issubset(granted_scopes):
+    if credentials and credentials.refresh_token and set(requested_scopes).issubset(granted_scopes):
         credentials.refresh(Request())
+        return credentials
+    if credentials and credentials.valid and set(requested_scopes).issubset(granted_scopes):
+        return credentials
     else:
         client_config = {
             "installed": {
@@ -95,8 +100,22 @@ def authenticate() -> Credentials:
 
     if credentials is None:
         raise RuntimeError("Unable to create Google Health API credentials")
+    # Keep the full grant in token.json, but mint an access token restricted to
+    # the API currently being called. Google Health rejects tokens containing
+    # the Drive scope, even when the Drive scope was granted to the same user.
     TOKEN_PATH.write_text(credentials.to_json(), encoding="utf-8")
-    return credentials
+    if set(requested_scopes) == set(SCOPES):
+        return credentials
+    scoped_credentials = Credentials(
+        token=None,
+        refresh_token=credentials.refresh_token,
+        token_uri=credentials.token_uri,
+        client_id=credentials.client_id,
+        client_secret=credentials.client_secret,
+        scopes=list(requested_scopes),
+    )
+    scoped_credentials.refresh(Request())
+    return scoped_credentials
 
 
 def fetch_health_data(credentials: Credentials, url: str) -> dict[str, Any]:
@@ -195,7 +214,7 @@ def main() -> None:
         if configured_data_root.is_absolute()
         else ROOT / configured_data_root
     )
-    credentials = authenticate()
+    credentials = authenticate([HEALTH_SCOPE])
     payload = fetch_health_data(credentials, os.getenv("HEALTH_API_URL", DEFAULT_HEALTH_URL))
     paths = write_run(payload, data_root, datetime.now(UTC))
     print(f"Ingested {len(payload.get('dataPoints', []))} exercise records")
