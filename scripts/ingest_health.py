@@ -108,7 +108,11 @@ def fetch_health_data(credentials: Credentials, url: str) -> dict[str, Any]:
         if page_token:
             params["pageToken"] = page_token
         response = session.get(url, params=params, timeout=60)
-        response.raise_for_status()
+        if not response.ok:
+            detail = response.text.strip()
+            raise RuntimeError(
+                f"Health API request failed with HTTP {response.status_code}: {detail}"
+            )
         payload = response.json()
         records.extend(payload.get("dataPoints", []))
         page_token = payload.get("nextPageToken")
