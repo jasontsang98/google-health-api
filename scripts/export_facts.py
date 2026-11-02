@@ -1,4 +1,4 @@
-"""Export dbt fact tables as Parquet files to a local Google Drive folder."""
+"""Export dbt fact tables as Parquet and CSV files to Google Drive."""
 
 from __future__ import annotations
 
@@ -39,11 +39,17 @@ def export_fact_tables(database: Path, output_dir: Path) -> list[Path]:
     exported: list[Path] = []
     with duckdb.connect(str(database), read_only=True) as connection:
         for table_name in FACT_TABLES:
-            target = output_dir / f"{table_name}.parquet"
-            connection.table(table_name).write_parquet(
-                str(target), compression="zstd", overwrite=True
+            relation = connection.table(table_name)
+
+            parquet_target = output_dir / f"{table_name}.parquet"
+            relation.write_parquet(
+                str(parquet_target), compression="zstd", overwrite=True
             )
-            exported.append(target)
+            exported.append(parquet_target)
+
+            csv_target = output_dir / f"{table_name}.csv"
+            relation.write_csv(str(csv_target), header=True, overwrite=True)
+            exported.append(csv_target)
     return exported
 
 
@@ -71,7 +77,8 @@ def upload_to_drive(paths: list[Path], folder_id: str) -> None:
             .execute()
             .get("files", [])
         )
-        media = MediaFileUpload(str(path), mimetype="application/octet-stream", resumable=True)
+        media_type = "text/csv" if path.suffix.lower() == ".csv" else "application/octet-stream"
+        media = MediaFileUpload(str(path), mimetype=media_type, resumable=True)
         if matches:
             service.files().update(
                 fileId=matches[0]["id"],
@@ -90,7 +97,10 @@ def upload_to_drive(paths: list[Path], folder_id: str) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Export fct_exercise and fct_badminton to a Drive-synced folder."
+        description=(
+            "Export fct_exercise and fct_badminton as Parquet and CSV files "
+            "to a Drive-synced folder."
+        )
     )
     parser.add_argument(
         "--database",

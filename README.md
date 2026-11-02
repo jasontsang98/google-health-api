@@ -148,7 +148,12 @@ Then export the dbt fact tables after each successful build:
 python scripts\export_facts.py
 ```
 
-This writes or refreshes these files in the configured folder:
+This writes or refreshes both Parquet and CSV versions in the configured folder:
+
+- `fct_exercise.parquet`
+- `fct_exercise.csv`
+- `fct_badminton.parquet`
+- `fct_badminton.csv`
 
 ```text
 fct_exercise.parquet
@@ -177,6 +182,64 @@ python scripts\export_facts.py --upload-to-drive
 ```
 
 For GitHub Actions, store `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, and `GOOGLE_DRIVE_FOLDER_ID` as encrypted repository secrets. The workflow can then run ingestion, `dbt build`, and this export command without accessing a local `G:` drive.
+
+## Run the pipeline with Airflow locally
+
+The DAG is in [`airflow/dags/google_health_pipeline.py`](./airflow/dags/google_health_pipeline.py). It runs these tasks in order:
+
+```text
+ingest_health -> dbt_build -> export_facts_to_drive
+```
+
+Airflow is not included in this project’s `.venv`; its dependencies should be installed in a separate Airflow environment. On Windows, Airflow should run through WSL2 or Linux containers rather than native Windows. The official Airflow documentation lists WSL2 and Linux containers as the supported Windows approaches.
+
+In WSL2, configure the DAG to use the project path and a Linux Python environment containing this project’s requirements:
+
+```bash
+export GOOGLE_HEALTH_PROJECT_ROOT=/mnt/c/Users/jason/OneDrive/Documents/Python\ Project/google-health-api
+export GOOGLE_HEALTH_PYTHON=/home/jason/google-health-venv/bin/python
+export GOOGLE_HEALTH_DBT=/home/jason/google-health-venv/bin/dbt
+```
+
+Copy the repository’s `.env` values into the environment available to Airflow, or place a private `.env` at the project root. The existing local `token.json` must contain both the Health and Drive scopes. Start Airflow with the repository’s `airflow/dags` folder configured as the DAG folder, then enable `google_health_pipeline` in the Airflow UI.
+
+### Recommended local option: Docker
+
+This repository includes [`Dockerfile.airflow`](./Dockerfile.airflow) and [`docker-compose.airflow.yml`](./docker-compose.airflow.yml). Docker keeps Airflow’s Linux environment separate from the project’s Windows `.venv` and mounts the repository so the DAG can run the existing scripts.
+
+From PowerShell, with Docker Desktop running:
+
+```powershell
+docker compose -f docker-compose.airflow.yml build
+docker compose -f docker-compose.airflow.yml up -d
+```
+
+Open `http://localhost:8085`, sign in with the credentials printed by the container logs, and enable `google_health_pipeline`.
+
+Useful commands:
+
+```powershell
+docker compose -f docker-compose.airflow.yml logs -f airflow
+docker compose -f docker-compose.airflow.yml ps
+docker compose -f docker-compose.airflow.yml down
+```
+
+The container uses the existing local `.env` and `token.json` through the mounted project folder. Reauthorize OAuth outside Docker if the token needs new scopes; the current token must already contain both Health and Drive access.
+
+## Run the pipeline with GitHub Actions
+
+The workflow is [`google-health-pipeline.yml`](./.github/workflows/google-health-pipeline.yml). It supports both the Actions **Run workflow** button and a daily UTC schedule.
+
+Add these repository secrets in GitHub:
+
+```text
+GOOGLE_CLIENT_ID
+GOOGLE_CLIENT_SECRET
+GOOGLE_REFRESH_TOKEN
+GOOGLE_DRIVE_FOLDER_ID
+```
+
+The refresh token must already be authorized for both the Google Health scope and `https://www.googleapis.com/auth/drive.file`. GitHub Actions uses the refresh token because it cannot open the local browser consent flow. The workflow creates a temporary DuckDB database, runs the data tests, and uploads the two fact Parquet files to Drive.
 
 `--profiles-dir .` tells dbt to use the repository root as the directory containing `profiles.yml`. In PowerShell, an alias can make this shorter:
 
